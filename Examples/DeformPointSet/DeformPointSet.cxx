@@ -19,6 +19,10 @@
 #include <vtkWindowToImageFilter.h>
 #include <vtkOBJExporter.h>
 #include <sstream>
+#include <vtkJPEGReader.h>
+#include <vtkImageData.h>
+#include <vtkTexture.h>
+
 //class vtkOBJPolyDataProcessor;
 
 int main(int argc, char *argv[]) {
@@ -46,8 +50,6 @@ int main(int argc, char *argv[]) {
 	//reader->SetRenderWindow(renWin);
 
 	reader->Update();
-
-	
 
 
 //	reader->Impl->
@@ -83,6 +85,15 @@ int main(int argc, char *argv[]) {
 			vtkSmartPointer<vtkActor>::New();
 	polyActor->SetMapper(polyMapper);
 
+	vtkSmartPointer<vtkJPEGReader> jpgReader = vtkSmartPointer<vtkJPEGReader>::New();
+	jpgReader->SetFileName("texture.jpg");
+	jpgReader->Update();
+
+	vtkSmartPointer<vtkTexture> polyTexture = vtkSmartPointer<vtkTexture>::New();
+	polyTexture->SetInputConnection(jpgReader->GetOutputPort());
+	polyTexture->InterpolateOn();
+	polyActor->SetTexture(polyTexture);
+
 	// Display the warped polydata
 	vtkSmartPointer<vtkPolyDataMapper> meshMapper =
 			vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -106,19 +117,23 @@ int main(int argc, char *argv[]) {
 
 	renWin->SetSize(1280, 720);
 
-	const int FRAME = 60;
+	const int FRAME = 30;
 	for (int i = 0; i < FRAME; ++i) {
 		// Now move one point and deform
 		double controlPoint[3];
-		pts->GetPoint(61, controlPoint);
-		pts->SetPoint(61, controlPoint[0],
-					  controlPoint[1] - 10.f/FRAME,
+		pts->GetPoint(6, controlPoint);
+		pts->SetPoint(6, controlPoint[0] - 7.f/FRAME,
+					  controlPoint[1],
+					  controlPoint[2] + 7.f/FRAME);
+		pts->GetPoint(73, controlPoint);
+		pts->SetPoint(73, controlPoint[0] + 10.f/FRAME,
+					  controlPoint[1],
 					  controlPoint[2]);
 		pts->Modified();
 
 		renWin->Render();
 
-		vtkSmartPointer<vtkWindowToImageFilter> filter =
+		vtkSmartPointer<vtkWindowToImageFilter> zBufferFilter =
 				vtkSmartPointer<vtkWindowToImageFilter>::New();
 		vtkSmartPointer<vtkBMPWriter> imageWriter =
 				vtkSmartPointer<vtkBMPWriter>::New();
@@ -126,20 +141,30 @@ int main(int argc, char *argv[]) {
 				vtkSmartPointer<vtkImageShiftScale>::New();
 
 		// Create Depth Map
-		filter->SetInput(renWin);
-//  filter->MagniSetMagnification(1);
-		filter->SetInputBufferTypeToZBuffer();        //Extract z buffer value
+		zBufferFilter->SetInput(renWin);
+//  zBufferFilter->MagniSetMagnification(1);
+		zBufferFilter->SetInputBufferTypeToZBuffer();        //Extract z buffer value
 
 		scale->SetOutputScalarTypeToUnsignedChar();
-		scale->SetInputConnection(filter->GetOutputPort());
+		scale->SetInputConnection(zBufferFilter->GetOutputPort());
 		scale->SetShift(0);
 		scale->SetScale(-255);
 
 		// Write depth map as a .bmp image
 		std::stringstream zBufferFilename;
-		zBufferFilename << "zbuffer_" << i << ".bmp";
+		zBufferFilename << "iamgroot_zbuffer_" << i << ".bmp";
 		imageWriter->SetFileName(zBufferFilename.str().c_str());
 		imageWriter->SetInputConnection(scale->GetOutputPort());
+		imageWriter->Write();
+
+		vtkSmartPointer<vtkWindowToImageFilter> RGBFilter =	vtkSmartPointer<vtkWindowToImageFilter>::New();
+		RGBFilter->SetInput(renWin);
+		RGBFilter->SetInputBufferTypeToRGB(); // Extract RGB buffer value
+
+		std::stringstream RGBFilename;
+		RGBFilename << "iamgroot_RGB_" << i << ".bmp";
+		imageWriter->SetFileName(RGBFilename.str().c_str());
+		imageWriter->SetInputConnection(RGBFilter->GetOutputPort());
 		imageWriter->Write();
 
 		vtkSmartPointer<vtkOBJExporter> OBJExporter = vtkSmartPointer<vtkOBJExporter>::New();
@@ -149,8 +174,15 @@ int main(int argc, char *argv[]) {
 		objFilename << "iamgroot_" << i;
 		OBJExporter->SetFilePrefix(objFilename.str().c_str());
 		OBJExporter->Write();
+
+		std::string line;
+		objFilename << ".mtl";
+		fstream mat(objFilename.str().c_str());
+		mat.seekg(0, mat.end);
+		mat << "map_Ka texture.jpg\nmap_Kd texture.jpg\n";
 	}
   iren->Start();
 
 	return EXIT_SUCCESS;
 }
+
