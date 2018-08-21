@@ -12,3 +12,8 @@ __pycache__/
 # Exclude some Xcode stuff.
 xcuserdata
 project.xcworkspace
+
+build/
+.idea/
+cmake-build-debug/
+
